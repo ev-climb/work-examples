@@ -1,0 +1,165 @@
+<template>
+  <div
+    class="decor-wrapper"
+    :style="[withOutBg ? {} : getEffects(ratio)]"
+  >
+    <div
+      class="decor-image-crop"
+      :style="styles"
+    >
+      <img
+        :src="deformedUrl"
+        class="story-img"
+        :style="[{filter: isFiltered || (isEffect && withOutBg) ? `url(#filter-temp-preview${isFooterComponent ? '-footer' : ''}__${decor.uuid})` : ''},]"
+      >
+      <filters-wrapper
+        :filter-id="`filter-temp-preview${isFooterComponent ? '-footer' : ''}__${decor.uuid}`"
+        :decor="decor"
+        :effect="effect"
+        :ratio="ratio"
+        :styles="styles"
+        :is-preview="true"
+        :is-upload="true"
+      />
+    </div>
+  </div>
+</template>
+
+<script>
+import * as _ from 'lodash';
+import FiltersWrapper from '~/components/Story/Decors/Render/DecorsFilter/FiltersWrapper.vue';
+import BaseRenderDecor from '~/components/Story/Decors/Render/renderMixin';
+
+export default {
+  name: 'FImage',
+  components: { FiltersWrapper },
+  mixins: [BaseRenderDecor],
+  props: {
+    decor: {
+      type: Object,
+      default: () => {},
+    },
+    ratio: {
+      type: Number,
+      default: 0,
+    },
+  },
+  computed: {
+    deformedUrl() {
+      if (this.decor.deformed?.media) {
+        return this.getDecorUrl(this.decor.deformed.media);
+      }
+      return this.getDecorUrl(this.decor.url || this.decor.media);
+    },
+    basePreviewStyle() {
+      return {
+        transform: `scale(${this.decor.horizontalDisplay / this.ratio}, ${this.decor.verticalDisplay / this.ratio})`,
+      };
+    },
+    styles() {
+      const decorCopy = _.cloneDeep(this.decor);
+      if (this.decor.horizontalDisplay === -1 && this.sliced) {
+        const offset = this.decor.mediaBounding.x + this.decor.mediaBounding.w - (this.decor.x + this.decor.w);
+        decorCopy.mediaBounding.x = this.decor.x - offset;
+      }
+      if (this.decor.verticalDisplay === -1 && this.sliced) {
+        const offset = this.decor.mediaBounding.y + this.decor.mediaBounding.h - (this.decor.y + this.decor.h);
+        decorCopy.mediaBounding.y = this.decor.y - offset;
+      }
+      const mediaW = decorCopy.mediaBounding ? decorCopy.mediaBounding.w / this.ratio : this.width;
+      const mediaH = decorCopy.mediaBounding ? decorCopy.mediaBounding.h / this.ratio : this.height;
+      const boundingX = decorCopy?.mediaBounding?.x;
+      const boundingY = decorCopy?.mediaBounding?.y;
+      const boundingW = decorCopy?.mediaBounding?.w;
+      const boundingH = decorCopy?.mediaBounding?.h;
+      const mediaXMain = decorCopy?.x;
+      const mediaYMain = decorCopy?.y;
+      const mediaWMain = decorCopy?.w;
+      const mediaHMain = decorCopy?.h;
+      const x = (boundingW - mediaWMain) / 2 - mediaXMain + boundingX;
+      const y = (boundingH - mediaHMain) / 2 - mediaYMain + boundingY;
+      const theta = (-1 * Math.PI * 2 * (decorCopy.angle)) / 360;
+      const cosT = Math.cos(theta);
+      const sinT = Math.sin(theta);
+      const positionX = (x * cosT - y * sinT) / this.ratio;
+      const positionY = (x * sinT + y * cosT) / this.ratio;
+      if (this.decor?.mediaBounding) {
+        return {
+          position: 'absolute',
+          width: `${mediaW}px`,
+          height: `${mediaH}px`,
+          transform: `translate(${positionX}px, ${positionY}px)`,
+        };
+      }
+      return {};
+    },
+    sliced() {
+      return this.decor.w !== this.decor.mediaBounding.w || this.decor.h !== this.decor.mediaBounding.h;
+    },
+    getFilters() {
+      return this.$store.getters['decors/getFilters'](this.decor);
+    },
+    isFiltered() {
+      const filtersDecor = [...this.getFilters];
+      delete filtersDecor[6];
+      return filtersDecor.some(item => item !== 0);
+    },
+    withOutBg() {
+      let status = false;
+      if (this.decor?.url) {
+        status = this.decor?.url.includes('no-bg') || this.decor?.url.includes('erased');
+        if (status) return true;
+      }
+      if (this.decor?.media) {
+        status = this.decor?.media.includes('no-bg') || this.decor?.media.includes('erased');
+        if (status) return true;
+      }
+      return status;
+    },
+    effect() {
+      let prop = {};
+      if (this.decor?.effect?.type === 'STROKE') {
+        const width = this.decor?.effect ? this.design.w / 500 * this.decor?.effect.settings[0].width / 2 : 0;
+        const color = this.decor?.effect ? this.decor?.effect.settings[0].color : '#000000';
+        const type = this.decor?.effect ? this.decor?.effect.settings[0].type : '';
+        prop = {
+          width,
+          color,
+          type,
+        };
+      }
+      if (this.decor?.effect?.type === 'SHADOW' || this.decor?.effect?.type === 'SOARING') {
+        const offset = this.decor.w / 100 * this.decor?.effect.settings[0].offset;
+        const x = offset / 4 * Math.sin(-this.decor?.effect.settings[0].direction / 50);
+        const y = offset / 4 * Math.cos(-this.decor?.effect.settings[0].direction / 50);
+        prop = {
+          dx: x / this.ratio / 2,
+          dy: y / this.ratio / 2,
+          color: this.decor?.effect.settings[0].color,
+          type: this.decor?.effect.settings[0].type,
+          transparency: this.decor?.effect.settings[0].transparency,
+          blur: this.decor?.effect.settings[0].blur,
+        };
+      }
+      return prop;
+    },
+  },
+  methods: {
+    getElementsMediaUrl(media) {
+      return media?.includes('http') ? media : `${process.env.BASE_URL}/${media}`;
+    },
+  },
+};
+</script>
+
+<style lang="scss" scoped>
+.decor-wrapper {
+  overflow: hidden;
+}
+.decor-image-crop {
+  .story-img {
+    object-fit: cover !important;
+    width: 100%;
+  }
+}
+</style>
